@@ -16,6 +16,13 @@ interface Product {
   };
 }
 
+interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+}
+
 interface User {
   id: string;
   email: string;
@@ -26,10 +33,15 @@ interface User {
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(
+    new Set()
+  );
 
   // Form states
   const [newProduct, setNewProduct] = useState({
@@ -69,6 +81,21 @@ export default function Home() {
     }
   };
 
+  // Kategorileri getir
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch("/api/categories");
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data);
+      } else {
+        console.error("Kategoriler getirilemedi");
+      }
+    } catch (err) {
+      console.error("Kategoriler getirilemedi:", err);
+    }
+  };
+
   // Kullanıcıları getir
   const fetchUsers = async () => {
     setLoading(true);
@@ -89,6 +116,31 @@ export default function Home() {
 
   // Yeni ürün ekle
   const handleAddProduct = async () => {
+    setError("");
+    setSuccess("");
+
+    // Form validasyonu
+    if (!newProduct.name.trim()) {
+      setError("Ürün adı gerekli");
+      return;
+    }
+    if (!newProduct.description.trim()) {
+      setError("Ürün açıklaması gerekli");
+      return;
+    }
+    if (!newProduct.categoryId) {
+      setError("Kategori seçimi gerekli");
+      return;
+    }
+    if (!newProduct.price || Number(newProduct.price) <= 0) {
+      setError("Geçerli bir fiyat girin");
+      return;
+    }
+    if (!newProduct.stock || Number(newProduct.stock) < 0) {
+      setError("Geçerli bir stok miktarı girin");
+      return;
+    }
+
     try {
       const response = await fetch("/api/products", {
         method: "POST",
@@ -111,6 +163,8 @@ export default function Home() {
         });
         fetchProducts();
         setError("");
+        setSuccess("Ürün başarıyla eklendi!");
+        setTimeout(() => setSuccess(""), 3000);
       } else {
         const data = await response.json();
         setError(data.error || "Ürün eklenemedi");
@@ -122,6 +176,8 @@ export default function Home() {
 
   // Yeni kullanıcı ekle
   const handleAddUser = async () => {
+    setError("");
+    setSuccess("");
     try {
       const response = await fetch("/api/users", {
         method: "POST",
@@ -138,6 +194,8 @@ export default function Home() {
         });
         fetchUsers();
         setError("");
+        setSuccess("Kullanıcı başarıyla eklendi!");
+        setTimeout(() => setSuccess(""), 3000);
       } else {
         const data = await response.json();
         setError(data.error || "Kullanıcı eklenemedi");
@@ -150,6 +208,7 @@ export default function Home() {
   useEffect(() => {
     fetchProducts();
     fetchUsers();
+    fetchCategories();
   }, []);
 
   const handleTabChange = (tabIndex: number) => {
@@ -160,11 +219,36 @@ export default function Home() {
     fetchProducts(searchQuery);
   };
 
+  // Read more functionality
+  const toggleDescription = (productId: string) => {
+    const newExpanded = new Set(expandedDescriptions);
+    if (newExpanded.has(productId)) {
+      newExpanded.delete(productId);
+    } else {
+      newExpanded.add(productId);
+    }
+    setExpandedDescriptions(newExpanded);
+  };
+
+  const truncateDescription = (
+    description: string,
+    maxLength: number = 100
+  ) => {
+    if (description.length <= maxLength) return description;
+    return description.substring(0, maxLength) + "...";
+  };
+
   return (
     <div className="space-y-6">
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
           {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+          {success}
         </div>
       )}
 
@@ -221,6 +305,71 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Kategori Ekleme */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">Yeni Kategori Ekle</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="text"
+                placeholder="Kategori Adı"
+                id="newCategoryName"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
+              />
+              <input
+                type="text"
+                placeholder="Açıklama (opsiyonel)"
+                id="newCategoryDescription"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
+              />
+              <button
+                onClick={async () => {
+                  setError("");
+                  setSuccess("");
+                  const name = (
+                    document.getElementById(
+                      "newCategoryName"
+                    ) as HTMLInputElement
+                  ).value;
+                  const description = (
+                    document.getElementById(
+                      "newCategoryDescription"
+                    ) as HTMLInputElement
+                  ).value;
+                  if (name) {
+                    try {
+                      const response = await fetch("/api/categories", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name, description }),
+                      });
+                      if (response.ok) {
+                        fetchCategories();
+                        (
+                          document.getElementById(
+                            "newCategoryName"
+                          ) as HTMLInputElement
+                        ).value = "";
+                        (
+                          document.getElementById(
+                            "newCategoryDescription"
+                          ) as HTMLInputElement
+                        ).value = "";
+                        setSuccess("Kategori başarıyla eklendi!");
+                        setTimeout(() => setSuccess(""), 3000);
+                      }
+                    } catch (err) {
+                      console.error("Kategori eklenemedi:", err);
+                    }
+                  }
+                }}
+                className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center space-x-2 md:col-span-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Kategori Ekle</span>
+              </button>
+            </div>
+          </div>
+
           {/* Yeni Ürün Ekleme Formu */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">Yeni Ürün Ekle</h2>
@@ -232,7 +381,7 @@ export default function Home() {
                 onChange={(e) =>
                   setNewProduct({ ...newProduct, name: e.target.value })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
               />
               <input
                 type="number"
@@ -241,7 +390,7 @@ export default function Home() {
                 onChange={(e) =>
                   setNewProduct({ ...newProduct, price: e.target.value })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
               />
               <textarea
                 placeholder="Açıklama"
@@ -250,7 +399,7 @@ export default function Home() {
                   setNewProduct({ ...newProduct, description: e.target.value })
                 }
                 rows={3}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent md:col-span-2"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black md:col-span-2"
               />
               <input
                 type="number"
@@ -259,16 +408,30 @@ export default function Home() {
                 onChange={(e) =>
                   setNewProduct({ ...newProduct, stock: e.target.value })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
               />
-              <input
-                type="text"
-                placeholder="Kategori ID"
+              <select
                 value={newProduct.categoryId}
                 onChange={(e) =>
                   setNewProduct({ ...newProduct, categoryId: e.target.value })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
+              >
+                <option value="">Kategori Seçin</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Resim URL (opsiyonel)"
+                value={newProduct.imageUrl}
+                onChange={(e) =>
+                  setNewProduct({ ...newProduct, imageUrl: e.target.value })
+                }
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black md:col-span-2"
               />
               <button
                 onClick={handleAddProduct}
@@ -296,23 +459,37 @@ export default function Home() {
                     <img
                       src={product.imageUrl}
                       alt={product.name}
-                      className="w-full h-48 object-cover"
+                      className="w-auto h-84 object-cover mx-auto"
                     />
                   )}
                   <div className="p-4">
                     <h3 className="text-lg font-semibold mb-2">
                       {product.name}
                     </h3>
-                    <p className="text-gray-600 text-sm mb-3">
-                      {product.description}
-                    </p>
+                    <div className="text-black text-sm mb-3">
+                      <p>
+                        {expandedDescriptions.has(product.id)
+                          ? product.description
+                          : truncateDescription(product.description)}
+                      </p>
+                      {product.description.length > 100 && (
+                        <button
+                          onClick={() => toggleDescription(product.id)}
+                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mt-1"
+                        >
+                          {expandedDescriptions.has(product.id)
+                            ? "Daha az göster"
+                            : "Devamını oku"}
+                        </button>
+                      )}
+                    </div>
                     <div className="text-lg font-bold text-blue-600 mb-2">
                       ₺{product.price}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-black">
                       Stok: {product.stock}
                     </div>
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className="text-xs text-black mt-1">
                       Kategori: {product.category?.name}
                     </div>
                   </div>
@@ -336,7 +513,7 @@ export default function Home() {
                 onChange={(e) =>
                   setNewUser({ ...newUser, email: e.target.value })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
               />
               <input
                 type="text"
@@ -345,7 +522,7 @@ export default function Home() {
                 onChange={(e) =>
                   setNewUser({ ...newUser, name: e.target.value })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
               />
               <input
                 type="password"
@@ -354,7 +531,7 @@ export default function Home() {
                 onChange={(e) =>
                   setNewUser({ ...newUser, password: e.target.value })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
               />
               <select
                 value={newUser.role}
@@ -364,7 +541,7 @@ export default function Home() {
                     role: e.target.value as "ADMIN" | "CUSTOMER",
                   })
                 }
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-black"
               >
                 <option value="CUSTOMER">Müşteri</option>
                 <option value="ADMIN">Admin</option>
@@ -389,7 +566,7 @@ export default function Home() {
               {users.map((user) => (
                 <div key={user.id} className="bg-white rounded-lg shadow p-4">
                   <h3 className="text-lg font-semibold mb-2">{user.name}</h3>
-                  <p className="text-gray-600 text-sm mb-2">{user.email}</p>
+                  <p className="text-black text-sm mb-2">{user.email}</p>
                   <span
                     className={`inline-block px-2 py-1 text-xs rounded-full ${
                       user.role === "ADMIN"
